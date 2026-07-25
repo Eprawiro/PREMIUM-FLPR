@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#243447">
+<title>FLPR Premium V1.0 — Every Point Matters</title>
+<link rel="stylesheet" href="/styles.css?v=1.0.2-logo-fix">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#home"><img src="/flpr-logo.png" alt="FLPR — Every Point Matters"></a>
+  <button id="menuBtn" class="menuBtn" aria-label="Open menu">☰</button>
+  <nav id="nav">
+    <a href="#home">Dashboard</a><a href="#rankings">Live Ranking</a><a href="#players">Players</a><a href="#statistics">Statistics</a>
+    <a href="#tournaments">Tournaments</a><a href="#handicap">Handicap</a><a href="#partners">Partner Matrix</a><a href="#awards">Awards</a><a href="#hall-of-fame">Hall of Fame</a><a href="#import">Import Data</a>
+  </nav>
+</header>
+<main id="app"></main>
+<footer><b>FLPR Premium v1.0</b><br>Every Point Matters<br><span>Designed and Developed by Edy SP using OpenAI's ChatGPT technology</span><br><small>© 2026 FLPR System. All Rights Reserved.</small></footer>
+<script>
+
+let DATA;
+const $=s=>document.querySelector(s);
+const initials=n=>n.split(/\s+/).map(x=>x[0]).slice(0,2).join("");
+const PLAYER_PHOTOS={"edy-sp":"/player-edy-sp.jpg","alwin":"/player-alwin.jpg","donny":"/player-donny.jpg","austin":"/player-austin.jpg","ronald":"/player-ronald.jpg","thohir":"/player-thohir.jpg","welly":"/player-welly.jpg","michael":"/player-michael.jpg"};
+const playerPhoto=p=>PLAYER_PHOTOS[p.slug]||"/generic-padel-avatar.svg";
+const avatarImg=(p,cls="avatarImg")=>`<img class="${cls}" src="${playerPhoto(p)}" alt="${escapeHtml(p.name)}" loading="lazy">`;
+const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:1});
+const badge=(txt,cls="")=>`<span class="badge ${cls}">${txt}</span>`;
+async function boot(){
+ try{
+  const response=await fetch("/flpr-data.json?v=1.0.2-logo-fix",{cache:"no-store"});
+  if(!response.ok)throw new Error(`FLPR data returned HTTP ${response.status}`);
+  DATA=await response.json();
+  route();
+ }catch(error){
+  console.error("FLPR boot error:",error);
+  document.querySelector("#app").innerHTML=`<section class="hero"><div class="eyebrow">Deployment check</div><h1 style="font-size:55px">FLPR data could not load</h1><p>The website files are online, but <code>/flpr-data.json</code> is missing or Netlify is publishing the wrong folder.</p></section><section class="wrap"><div class="card"><h3>How to fix</h3><p>Set the Netlify publish directory to the repository root and confirm that the repository contains:</p><pre>index.html
+app.js
+styles.css
+flpr-data.json
+import-americano.js
+netlify.toml
+package.json</pre><p><b>Technical detail:</b> ${escapeHtml(error.message)}</p></div></section>`;
+ }
+}
+window.addEventListener("hashchange",route);
+document.addEventListener("click",e=>{const row=e.target.closest("[data-player]");if(row) location.hash="#player/"+row.dataset.player});
+document.getElementById("menuBtn").onclick=()=>document.getElementById("nav").classList.toggle("open");
+function navActive(key){document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("active",a.getAttribute("href")==="#"+key));document.getElementById("nav").classList.remove("open")}
+function route(){if(!DATA)return;let h=location.hash.slice(1)||"home";if(h.startsWith("player/"))return playerPage(h.split("/")[1]);({home,rankings,changes:ratingChanges,players:playersPage,statistics:statisticsPage,tournaments:tournamentsPage,handicap:handicapPage,partners:partnerMatrixPage,awards,"hall-of-fame":hallOfFamePage,import:importPage,methodology,appendix}[h]||home)();navActive(h)}
+function kpi(label,value){return `<div class="kpi"><small>${label}</small><strong>${value}</strong></div>`}
+function signed(n,digits=2){const v=Number(n||0);return `${v>0?"+":""}${v.toFixed(digits)}`}
+function movementIcon(d){return d==="UP"?"▲":d==="DOWN"?"▼":"●"}
+function movementClass(d){return d==="UP"?"changeUp":d==="DOWN"?"changeDown":"changeFlat"}
+function changeCard(p,compact=false){
+ const c=p.ratingChange||{previousRating:p.rating,currentRating:p.rating,delta:0,direction:"UNCHANGED",rankMovement:0,event:"Production Baseline"};
+ return `<article class="changeCard ${movementClass(c.direction)}" data-player="${p.slug}">
+  <div class="changeTop"><div><small>#${p.rank} · ${p.name}</small><strong>${movementIcon(c.direction)} ${signed(c.delta)}</strong></div><span class="badge">${c.event}</span></div>
+  <div class="ratingJourney"><span>${Number(c.previousRating).toFixed(2)}</span><i>→</i><b>${Number(c.currentRating).toFixed(2)}</b></div>
+  ${compact?"":`<p>${escapeHtml(c.explanation)}</p><div class="changeMeta"><span>Rank movement: <b>${c.rankMovement>0?"▲ "+c.rankMovement:c.rankMovement<0?"▼ "+Math.abs(c.rankMovement):"—"}</b></span><span>Confidence: <b>${c.confidence}</b></span></div>`}
+ </article>`;
+}
+function rankingRows(list=DATA.players){return list.map(p=>`<tr data-player="${p.slug}"><td class="rank">#${p.rank}</td><td class="playerName">${p.name}</td><td>${p.rating}</td><td>${badge(p.tier,"tier-"+p.tier)}</td><td class="${p.handicap>0?"pos":p.handicap<0?"neg":""}">${p.handicap>0?"+":""}${p.handicap}</td><td>${p.class}</td><td>${p.matches}</td><td>${p.winRate}%</td><td>${p.status}</td></tr>`).join("")}
+function home(){
+ const p=DATA.players,a=DATA.awards;
+ const featured=p.find(x=>x.slug==="edy-sp")||p[0];
+ const champion=p[0];
+ const totalWins=DATA.kpis["Total Wins"]||p.reduce((s,x)=>s+(x.wins||0),0);
+ const established=DATA.kpis["Established Players"]||p.filter(x=>x.status==="Established").length;
+ const activity=[
+  {icon:"🏆",title:`${champion.name} leads the official ranking`,meta:`FLPR ${champion.rating} · Handicap ${champion.handicap>0?"+":""}${champion.handicap}`},
+  {icon:"📊",title:`${DATA.kpis["Valid Matches"]} verified matches are active`,meta:`${DATA.kpis["Player-Match Records"]} player-match records processed`},
+  {icon:"✅",title:`${established} established player ratings`,meta:"Reliability-weighted status based on verified match volume"},
+  {icon:"📥",title:"Americano import workflow prepared",meta:"New tournaments enter persistent staging before admin approval"}
+ ];
+ const awardItems=a.slice(0,4);
+ const top=p.slice(0,8);
+ $("#app").innerHTML=`<div class="premiumShell">
+  <aside class="premiumSide">
+   <div class="sideNav">
+    <a class="active" href="#home">⌂ <span>Dashboard</span></a><a href="#rankings">☷ <span>Live Ranking</span></a><a href="#players">♙ <span>Players</span></a><a href="#statistics">↗ <span>Statistics</span></a><a href="#tournaments">♛ <span>Tournaments</span></a><a href="#handicap">⚿ <span>Handicap</span></a><a href="#partners">♧ <span>Partner Matrix</span></a><a href="#awards">♕ <span>Awards</span></a><a href="#hall-of-fame">♔ <span>Hall of Fame</span></a><a href="#import">⇧ <span>Data Import</span></a><a href="#methodology">ⓘ <span>About FLPR</span></a>
+   </div>
+   <div class="sideStatement"><b>FLPR SYSTEM</b><p>Fair. Dynamic. Competitive.<br>Built for the Padel Community.</p><small>Every Point Matters</small></div>
+  </aside>
+  <section class="premiumMain">
+   <div class="premiumTop"><div><span class="eyebrow">FLPR Premium v1.0 Final</span><h1>Official Dashboard</h1></div><a class="importGold" href="#import">⇧ Import Data</a></div>
+   <div class="premiumKpis">
+    <article><i>♟</i><small>Total Players</small><strong>${DATA.kpis.Players}</strong><span>Active registry</span></article>
+    <article><i>✓</i><small>Valid Matches</small><strong>${DATA.kpis["Valid Matches"]}</strong><span>Verified records</span></article>
+    <article><i>↗</i><small>Total Wins</small><strong>${totalWins}</strong><span>All-time dataset</span></article>
+    <article><i>★</i><small>Established</small><strong>${established}</strong><span>Reliable ratings</span></article>
+    <article><i>◎</i><small>Balance Index</small><strong>${fmt(DATA.kpis["Competitive Balance Index"])}</strong><span>Competition score</span></article>
+   </div>
+   <div class="dashboardGrid">
+    <section class="darkPanel rankPanel"><div class="panelTitle"><h2>Live Ranking</h2><a href="#rankings">View all</a></div><div class="rankList">${top.map((x,i)=>`<div class="rankLine" data-player="${x.slug}"><span class="rankMedal rank${i+1}">${x.rank}</span>${avatarImg(x,"rankPhoto")}<div><b>${escapeHtml(x.name)}</b><small>FLPR <em>${x.rating}</em></small></div><aside><small>HCP</small><strong>${x.handicap>0?"+":""}${x.handicap}</strong></aside></div>`).join("")}</div><a class="panelButton" href="#rankings">View Full Ranking →</a></section>
+    <section class="darkPanel featurePanel">
+      <div class="featurePhotoWrap">${avatarImg(featured,"featurePhoto")}<span>★ FEATURED PLAYER</span></div>
+      <div class="featureCopy"><div class="featureName"><span>🇮🇩</span><h2>${escapeHtml(featured.name)}</h2><b>RANK #${featured.rank}</b></div><small>FLPR Rating</small><div class="featureRating">${featured.rating}</div><div class="featureMetrics"><div><small>Handicap</small><strong>${featured.handicap>0?"+":""}${featured.handicap}</strong></div><div><small>Win Rate</small><strong>${featured.winRate}%</strong></div><div><small>Matches</small><strong>${featured.matches}</strong></div><div><small>Status</small><strong>${featured.status}</strong></div><div><small>Best Partner</small><strong>${escapeHtml(featured.analysis?.bestPartner?.name||"—")}</strong></div><div><small>Class</small><strong>${featured.class}</strong></div></div><a class="panelButton compact" href="#player/${featured.slug}">Open Full Player Report →</a></div>
+    </section>
+    <section class="darkPanel awardsPanel"><div class="panelTitle"><h2>Achievements</h2><a href="#awards">View all</a></div>${awardItems.map((x,i)=>`<div class="awardLine"><span>${["🏆","⭐","🥇","🔥"][i]||"🏅"}</span><div><b>${escapeHtml(x.award)}</b><small>${escapeHtml(x.winner)} · ${escapeHtml(x.metric)}</small></div></div>`).join("")}</section>
+    <section class="darkPanel chartPanel"><div class="panelTitle"><h2>Rating Landscape</h2><span>Top 8</span></div><canvas id="premiumRatingChart" height="190"></canvas></section>
+    <section class="darkPanel activityPanel"><div class="panelTitle"><h2>Live Activity Feed</h2><span>Production</span></div>${activity.map(x=>`<div class="activityLine"><i>${x.icon}</i><div><b>${escapeHtml(x.title)}</b><small>${escapeHtml(x.meta)}</small></div></div>`).join("")}<a class="panelButton" href="#changes">Open Live Rating Center →</a></section>
+   </div>
+   <div class="bottomDash">
+    <section class="darkPanel miniShow"><div class="panelTitle"><h2>Top Players</h2><a href="#rankings">Full table</a></div><div class="faceRow">${p.slice(0,5).map(x=>`<div data-player="${x.slug}">${avatarImg(x,"miniFace")}<b>${escapeHtml(x.name)}</b><small>${x.rating}</small></div>`).join("")}</div></section>
+    <section class="darkPanel miniShow"><div class="panelTitle"><h2>Rating Readiness</h2><span>v1.0</span></div><div class="readiness"><strong>${established}/${DATA.kpis.Players}</strong><span>players are established</span><div class="readinessBar"><i style="width:${Math.round(established/DATA.kpis.Players*100)}%"></i></div><small>Provisional players remain active while confidence grows.</small></div></section>
+    <section class="darkPanel miniShow"><div class="panelTitle"><h2>Americano Integration</h2><a href="#import">Open</a></div><div class="integrationReady"><i>✓</i><div><b>Static deployment mode</b><small>Dashboard ready · Server import optional</small></div></div><p class="integrationNote">This flat package runs without server functions. Official data updates are performed through the workbook build workflow.</p></section>
+   </div>
+   <div class="dashboardCredit"><b>Designed and Developed by Edy SP</b><span>using OpenAI's ChatGPT technology</span></div>
+  </section>
+ </div>`;
+ if(window.Chart){new Chart($("#premiumRatingChart"),{type:"line",data:{labels:top.map(x=>x.name),datasets:[{label:"FLPR Rating",data:top.map(x=>x.rating),borderColor:"#e7bf4c",backgroundColor:"rgba(231,191,76,.16)",fill:true,tension:.32,pointRadius:4,pointBackgroundColor:"#f3cf61"}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#9fb0c3"},grid:{display:false}},y:{ticks:{color:"#9fb0c3"},grid:{color:"rgba(255,255,255,.07)"}}}}})}
+}
+function rankings(){
+ $("#app").innerHTML=`<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">Official table</div><h1 style="font-size:55px">FLPR Ranking</h1><p>Bayesian-adjusted, reliability-weighted composite rating.</p></section><section class="wrap"><div class="sectionHead"><div><h2>All Players</h2><p>Click a player to open the individual profile.</p></div><input id="rankSearch" class="search" placeholder="Search player…"></div><div class="tableWrap"><table><thead><tr><th>Rank</th><th>Player</th><th>Rating</th><th>Tier</th><th>Handicap</th><th>Class</th><th>Matches</th><th>Win Rate</th><th>Status</th></tr></thead><tbody id="rankBody">${rankingRows()}</tbody></table></div></section>`;
+ $("#rankSearch").oninput=e=>{$("#rankBody").innerHTML=rankingRows(DATA.players.filter(p=>p.name.toLowerCase().includes(e.target.value.toLowerCase())))}
+}
+function playersPage(){
+ $("#app").innerHTML=`<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">Player directory</div><h1 style="font-size:55px">20 Player Profiles</h1><p>Ranking, handicap, match record and advanced performance indicators.</p></section><section class="wrap"><div class="sectionHead"><div><h2>Players</h2><p>Verified FLPR player registry.</p></div><input id="playerSearch" class="search" placeholder="Search player…"></div><div id="playerCards" class="cards">${playerCards(DATA.players)}</div></section>`;
+ $("#playerSearch").oninput=e=>{$("#playerCards").innerHTML=playerCards(DATA.players.filter(p=>p.name.toLowerCase().includes(e.target.value.toLowerCase())))}
+}
+function playerCards(list){return list.map(p=>`<article class="playerCard" data-player="${p.slug}">${avatarImg(p,"avatarImg")}<div class="meta">Rank #${p.rank} · ${badge(p.class,"class-"+p.class)}</div><h3>${p.name}</h3><div class="miniStats"><div><b>${p.rating}</b><small>Rating</small></div><div><b>${p.handicap>0?"+":""}${p.handicap}</b><small>Handicap</small></div><div><b>${p.winRate}%</b><small>Win Rate</small></div></div></article>`).join("")}
+function awardCard(x){return `<article class="awardCard"><div class="icon">🏆</div><div class="meta">${x.metric}</div><h3>${x.award}</h3><strong>${x.winner}</strong><p>${x.rule}<br>Runner-up: ${x.runnerUp}</p></article>`}
+function awards(){
+ $("#app").innerHTML=`<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">Recognition</div><h1 style="font-size:55px">FLPR Awards</h1><p>Official distinctions calculated from the current ranking dataset.</p></section><section class="wrap"><div class="cards">${DATA.awards.map(awardCard).join("")}</div></section>`
+}
+function playerPage(slug){
+ const p=DATA.players.find(x=>x.slug===slug);if(!p)return rankings();
+ $("#app").innerHTML=`<section class="profileHero"><a class="back" href="#players">← All players</a><div class="profileTop">${avatarImg(p,"profilePhoto")}<div><div class="eyebrow">FLPR Player Profile</div><h1>${p.name}</h1><p>Rank #${p.rank} · Tier ${p.tier} · ${p.status}</p></div></div></section>
+ <section class="wrap"><div class="metricGrid">${metric("FLPR Rating",p.rating)}${metric("Official Handicap",(p.handicap>0?"+":"")+p.handicap)}${metric("Matches",p.matches)}${metric("Win Rate",p.winRate+"%")}</div>
+ <div class="grid2" style="margin-top:20px"><div class="card"><h3>Performance Profile</h3>${bar("Dominance",p.dominance)}${bar("Vs Expectation",p.expectation)}${bar("Schedule Strength",p.sos)}${bar("Consistency",p.consistency)}${bar("Clutch",p.clutch)}${bar("Versatility",p.versatility)}${bar("Recent Form",p.recentForm)}</div>
+ <div class="card"><h3>Player Summary</h3><p class="meta">Class</p><p>${badge(p.class,"class-"+p.class)}</p><p class="meta">Record</p><p><b>${p.wins} wins · ${p.losses} losses</b></p><p class="meta">Adjusted Win Rate</p><p><b>${p.adjustedWinRate}%</b></p><p class="meta">Rating Gap vs Baseline</p><p><b class="${p.gap>=0?"pos":"neg"}">${p.gap>=0?"+":""}${p.gap}</b></p><p class="meta">Primary Format</p><p><b>Weekly Americano</b></p></div></div>
+ ${playerRatingChange(p)}
+ ${analysisBlock(p)}
+ </section>`;
+}
+function playerRatingChange(p){
+ const c=p.ratingChange;if(!c)return "";
+ const positives=(c.positiveFactors||[]).map(x=>`<li><span>${escapeHtml(x.label)}</span><b>${x.value}</b></li>`).join("")||"<li><span>Awaiting next approved tournament</span><b>—</b></li>";
+ const risks=(c.riskFactors||[]).map(x=>`<li><span>${escapeHtml(x.label)}</span><b>${x.value}</b></li>`).join("")||"<li><span>No major statistical risk flagged</span><b>—</b></li>";
+ return `<div class="ratingChangeSection"><div class="sectionHead"><div><h2>Live Rating Change</h2><p>Transparent movement from the previous official snapshot.</p></div><span class="badge">V1.0 Production</span></div>
+ <div class="ratingChangeHero ${movementClass(c.direction)}"><div><small>Previous rating</small><strong>${Number(c.previousRating).toFixed(2)}</strong></div><div class="changeArrow">${movementIcon(c.direction)}<b>${signed(c.delta)}</b></div><div><small>Current rating</small><strong>${Number(c.currentRating).toFixed(2)}</strong></div></div>
+ <div class="grid2" style="margin-top:20px"><article class="card"><h3>Why the rating moved</h3><p class="analysisLead">${escapeHtml(c.explanation)}</p><div class="changeMeta"><span>Event: <b>${escapeHtml(c.event)}</b></span><span>Date: <b>${escapeHtml(c.eventDate)}</b></span><span>Rank movement: <b>${c.rankMovement===0?"No change":signed(c.rankMovement,0)}</b></span></div></article>
+ <article class="card"><h3>Rating Drivers</h3><div class="driverCols"><div><h4>Positive signals</h4><ul>${positives}</ul></div><div><h4>Watch points</h4><ul>${risks}</ul></div></div></article></div></div>`;
+}
+function ratingChanges(){
+ const list=[...DATA.players].sort((a,b)=>(b.ratingChange?.delta||0)-(a.ratingChange?.delta||0));
+ const changed=list.filter(p=>Math.abs(p.ratingChange?.delta||0)>0).length;
+ $("#app").innerHTML=`<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">FLPR V1.0 Production</div><h1 style="font-size:55px">Live Rating Change</h1><p>See exactly how every approved tournament changes player ratings, rankings and confidence.</p></section>
+ <section class="wrap"><div class="kpis">${kpi("Snapshot",DATA.meta.ratingSnapshot.label)}${kpi("Players tracked",DATA.players.length)}${kpi("Players moved",changed)}${kpi("Latest event","Baseline")}${kpi("Status","Live-ready")}</div>
+ <div class="baselineNotice" style="margin-top:28px"><b>${DATA.meta.ratingSnapshot.label} established on ${DATA.meta.ratingSnapshot.date}.</b> No artificial movement has been created. The first change will appear automatically after an approved tournament is recalculated.</div>
+ <div class="sectionHead" style="margin-top:38px"><div><h2>Player Movement Board</h2><p>Click a player for the full explanation and rating drivers.</p></div><input id="changeSearch" class="search" placeholder="Search player…"></div>
+ <div id="changeCards" class="changeGrid">${list.map(p=>changeCard(p)).join("")}</div></section>`;
+ $("#changeSearch").oninput=e=>{$("#changeCards").innerHTML=list.filter(p=>p.name.toLowerCase().includes(e.target.value.toLowerCase())).map(p=>changeCard(p)).join("")};
+}
+function analysisBlock(p){const a=p.analysis;if(!a)return "";return `<div class="analysisSection"><div class="sectionHead"><div><h2>FLPR Player Analysis</h2><p>Automatically generated from ranking, handicap, partner chemistry and opponent data.</p></div><span class="badge">D2.1 Engine</span></div><div class="analysisGrid"><article class="card analysisMain"><h3>Performance Assessment</h3><p class="analysisLead">${a.summary}</p><div class="analysisCols"><div><h4>Key Strengths</h4><ul>${a.strengths.map(x=>`<li>${cap(x)}</li>`).join("")}</ul></div><div><h4>Development Areas</h4><ul>${a.developmentAreas.map(x=>`<li>${cap(x)}</li>`).join("")}</ul></div></div><div class="coachNote"><b>FLPR Coach Note</b><p>${a.coachNote}</p></div></article><div class="matchupGrid">${relationCard("Best Recorded Partner",a.bestPartner,"chemistryDelta")}${relationCard("Challenging Partner",a.challengingPartner,"chemistryDelta")}${relationCard("Hardest Opponent",a.hardestOpponent,"pointDiffPerMatch")}${relationCard("Favorable Matchup",a.favorableOpponent,"pointDiffPerMatch")}</div></div><div class="card handicapAnalysis"><h3>Handicap Assessment</h3><p>${a.handicapExplanation}</p><small>${a.reliabilityNote}</small></div></div>`}
+function relationCard(title,x,metric){if(!x)return `<article class="relationCard"><small>${title}</small><strong>Insufficient data</strong></article>`;let detail=`${x.matches} match${x.matches===1?"":"es"} · ${x.winRate}% win rate`;if(metric==="chemistryDelta")detail+=` · ${x.chemistryDelta>=0?"+":""}${x.chemistryDelta}% chemistry`;else detail+=` · ${x.pointDiffPerMatch>=0?"+":""}${x.pointDiffPerMatch} pts/match`;return `<article class="relationCard"><small>${title}</small><strong>${x.name}</strong><span>${detail}</span></article>`}
+function cap(x){return x.charAt(0).toUpperCase()+x.slice(1)}
+function metric(a,b){return `<div class="metric"><small>${a}</small><strong>${b}</strong></div>`}
+function bar(a,b){return `<div style="margin:15px 0"><div style="display:flex;justify-content:space-between"><b>${a}</b><span>${fmt(b)}</span></div><div class="bar"><i style="width:${Math.max(0,Math.min(100,b))}%"></i></div></div>`}
+
+
+function pageHero(eyebrow,title,description){return `<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">${eyebrow}</div><h1 style="font-size:55px">${title}</h1><p>${description}</p></section>`}
+function statisticsPage(){
+ const p=DATA.players, avg=x=>p.reduce((s,a)=>s+Number(a[x]||0),0)/p.length;
+ const leaders=[['Win Rate',p.slice().sort((a,b)=>b.winRate-a.winRate)[0],'winRate','%'],['Consistency',p.slice().sort((a,b)=>b.consistency-a.consistency)[0],'consistency',''],['Clutch',p.slice().sort((a,b)=>b.clutch-a.clutch)[0],'clutch',''],['Recent Form',p.slice().sort((a,b)=>b.recentForm-a.recentForm)[0],'recentForm','']];
+ $('#app').innerHTML=pageHero('Advanced analytics','Statistics','Competition-wide performance analytics generated directly from the FLPR workbook.')+`<section class="wrap"><div class="metricGrid">${metric('Average Rating',fmt(DATA.kpis['Average Rating']))}${metric('Rating Spread',fmt(DATA.kpis['Rating Spread']))}${metric('Average Win Rate',fmt(DATA.kpis['Average Win Rate'])+'%')}${metric('Balance Index',fmt(DATA.kpis['Competitive Balance Index']))}</div><div class="grid2" style="margin-top:24px"><div class="card"><h3>Rating Distribution</h3><canvas id="statsRatingChart" height="210"></canvas></div><div class="card"><h3>Performance Leaders</h3>${leaders.map(x=>`<div class="leaderStat" data-player="${x[1].slug}"><span>${x[0]}</span><b>${escapeHtml(x[1].name)}</b><strong>${fmt(x[1][x[2]])}${x[3]}</strong></div>`).join('')}</div></div><div class="card" style="margin-top:24px"><h3>Player Performance Matrix</h3><div class="tableWrap"><table><thead><tr><th>Player</th><th>Rating</th><th>Dominance</th><th>Consistency</th><th>Clutch</th><th>Versatility</th><th>Recent Form</th></tr></thead><tbody>${p.map(x=>`<tr data-player="${x.slug}"><td><b>${escapeHtml(x.name)}</b></td><td>${x.rating}</td><td>${fmt(x.dominance)}</td><td>${fmt(x.consistency)}</td><td>${fmt(x.clutch)}</td><td>${fmt(x.versatility)}</td><td>${fmt(x.recentForm)}</td></tr>`).join('')}</tbody></table></div></div></section>`;
+ new Chart(document.getElementById('statsRatingChart'),{type:'bar',data:{labels:p.slice(0,12).map(x=>x.name),datasets:[{label:'FLPR Rating',data:p.slice(0,12).map(x=>x.rating),backgroundColor:'rgba(232,189,67,.75)',borderColor:'#e8bd43',borderWidth:1}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#9dafc1'}},y:{ticks:{color:'#9dafc1'},grid:{color:'rgba(255,255,255,.08)'}}}}});
+}
+function tournamentsPage(){
+ const matches=Number(DATA.kpis['Valid Matches']||0), records=Number(DATA.kpis['Player-Match Records']||0);
+ const events=[['JakSel T1','15 Jun 2026','Americano','Completed'],['JakSel T2','22 Jun 2026','Americano','Completed'],['JakSel T3','29 Jun 2026','Americano','Completed'],['JakSel T4','06 Jul 2026','Americano','Completed'],['JakSel T5','20 Jul 2026','Americano','Completed']];
+ $('#app').innerHTML=pageHero('Competition history','Tournaments','Verified tournament history and the workflow for adding the next event.')+`<section class="wrap"><div class="metricGrid">${metric('Completed Tournaments',5)}${metric('Verified Matches',matches)}${metric('Player-Match Records',records)}${metric('Next Tournament','JakSel T6')}</div><div class="card" style="margin-top:24px"><h3>Tournament History</h3><div class="tableWrap"><table><thead><tr><th>Event</th><th>Date</th><th>Format</th><th>Status</th><th>Data</th></tr></thead><tbody>${events.map((x,i)=>`<tr><td><b>${x[0]}</b></td><td>${x[1]}</td><td>${x[2]}</td><td>${badge(x[3])}</td><td>${i===events.length-1?'Latest official snapshot':'Included in workbook'}</td></tr>`).join('')}</tbody></table></div></div><div class="grid2" style="margin-top:24px"><div class="card"><h3>Next Tournament</h3><div class="nextEvent"><b>JakSel T6</b><strong>30 July 2026</strong><span>Americano · Pending import</span><a class="btn btnGold" href="#import">Import Tournament Data</a></div></div><div class="card"><h3>Official Processing Flow</h3><ol class="pipeline"><li>Import tournament URL</li><li>Validate rounds, scores and players</li><li>Review duplicate and unknown-name warnings</li><li>Approve tournament</li><li>Recalculate ranking, handicap and reports</li></ol></div></div></section>`;
+}
+function handicapPage(){
+ const groups=['Elite','Strong','Competitive','Developing','Entry'];
+ $('#app').innerHTML=pageHero('Competition balancing','Handicap Engine','Official handicaps designed to balance opportunity while preserving genuine player strength.')+`<section class="wrap"><div class="card"><h3>Official Handicap Table</h3><div class="tableWrap"><table><thead><tr><th>Rank</th><th>Player</th><th>Rating</th><th>Class</th><th>Status</th><th>Official HCP</th><th>Interpretation</th></tr></thead><tbody>${DATA.players.map(x=>`<tr data-player="${x.slug}"><td>#${x.rank}</td><td><b>${escapeHtml(x.name)}</b></td><td>${x.rating}</td><td>${badge(x.class,'class-'+x.class)}</td><td>${x.status}</td><td class="${x.handicap>0?'pos':x.handicap<0?'neg':''}"><b>${x.handicap>0?'+':''}${x.handicap}</b></td><td>${x.handicap>=3?'Concedes balancing support':x.handicap>0?'Slightly stronger profile':x.handicap<0?'Receives balancing support':'Neutral baseline'}</td></tr>`).join('')}</tbody></table></div></div><div class="grid2" style="margin-top:24px"><div class="card"><h3>Handicap Philosophy</h3><p>FLPR combines competitive balance and genuine playing ability. Handicap changes are intentionally moderate, with Weekly Americano as the primary reference format. New players receive an active provisional handicap immediately.</p></div><div class="card"><h3>Class Distribution</h3>${groups.map(g=>{const n=DATA.players.filter(x=>x.class===g).length;return `<div class="leaderStat"><span>${g}</span><b>${n} players</b><strong>${Math.round(n/DATA.players.length*100)}%</strong></div>`}).join('')}</div></div></section>`;
+}
+function partnerMatrixPage(){
+ const rows=DATA.players.filter(x=>x.analysis?.bestPartner).map(x=>({player:x,best:x.analysis.bestPartner,hard:x.analysis.hardestOpponent}));
+ $('#app').innerHTML=pageHero('Chemistry & matchups','Partner Matrix','Evidence-based partner chemistry and opponent difficulty for every player.')+`<section class="wrap"><div class="card"><h3>Best Recorded Partnerships</h3><div class="tableWrap"><table><thead><tr><th>Player</th><th>Best Partner</th><th>Matches</th><th>Win Rate</th><th>Chemistry Delta</th><th>Hardest Opponent</th></tr></thead><tbody>${rows.map(r=>`<tr data-player="${r.player.slug}"><td><b>${escapeHtml(r.player.name)}</b></td><td>${escapeHtml(r.best.name)}</td><td>${r.best.matches}</td><td>${r.best.winRate}%</td><td class="${r.best.chemistryDelta>=0?'pos':'neg'}">${signed(r.best.chemistryDelta,1)}%</td><td>${escapeHtml(r.hard?.name||'—')}</td></tr>`).join('')}</tbody></table></div></div><div class="cards" style="margin-top:24px">${rows.slice(0,6).map(r=>`<article class="playerCard" data-player="${r.player.slug}">${avatarImg(r.player,'avatarImg')}<div class="meta">PARTNER INSIGHT</div><h3>${escapeHtml(r.player.name)}</h3><p>Best with <b>${escapeHtml(r.best.name)}</b><br>${r.best.winRate}% win rate · ${signed(r.best.chemistryDelta,1)}% chemistry</p></article>`).join('')}</div></section>`;
+}
+function hallOfFamePage(){
+ const winners=DATA.awards.slice(0,9);
+ $('#app').innerHTML=pageHero('FLPR legacy','Hall of Fame','The players and performances that define the current FLPR season.')+`<section class="wrap"><div class="hofHero"><div>♛</div><small>Current FLPR Champion</small><h2>${escapeHtml(DATA.players[0].name)}</h2><strong>Rating ${DATA.players[0].rating}</strong><p>${DATA.players[0].wins} wins from ${DATA.players[0].matches} matches</p></div><div class="cards" style="margin-top:24px">${winners.map((x,i)=>`<article class="awardCard"><div class="icon">${['🏆','⭐','🥇','🔥','🎯','🤝','📈','🧱','⚡'][i]||'🏅'}</div><div class="meta">${escapeHtml(x.metric)}</div><h3>${escapeHtml(x.award)}</h3><strong>${escapeHtml(x.winner)}</strong><p>${escapeHtml(x.rule)}<br>Runner-up: ${escapeHtml(x.runnerUp)}</p></article>`).join('')}</div></section>`;
+}
+
+function importPage(){
+ $("#app").innerHTML=`<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">Netlify Flat Edition</div><h1 style="font-size:55px">Tournament Import</h1><p>The production dashboard is running in static mode with no server-function subfolder.</p></section>
+ <section class="wrap"><div class="grid2"><div class="card"><h3>Americano Padel Source</h3><label class="meta" for="americanoUrl">Tournament URL</label><input id="americanoUrl" class="importInput" placeholder="Paste an Americano Padel result URL"><div class="importActions"><button id="copyImport" class="btn btnGold">Copy URL for Workbook Import</button><button id="clearImport" class="btn btnGhost">Clear</button></div><div id="importStatus"><p class="infoBox"><b>Static deployment mode.</b><br>This zero-subfolder package does not call unavailable <code>/api</code> endpoints, so Netlify will not show import errors. Tournament data is added through the FLPR workbook and then republished.</p></div></div>
+ <div class="card"><h3>Safe Update Workflow</h3><ol class="pipeline"><li>Paste the Americano tournament URL</li><li>Process and validate it in the FLPR workbook workflow</li><li>Confirm player-name matching and duplicate checks</li><li>Rebuild <code>flpr-data.json</code></li><li>Upload the refreshed flat ZIP to Netlify</li></ol></div></div>
+ <div class="card" style="margin-top:24px"><h3>Deployment Status</h3><div class="metricGrid">${metric("Website","Ready")}${metric("Database","flpr-data.json")}${metric("Players",DATA.kpis.Players)}${metric("Mode","Static Flat")}</div><p class="successBox" style="margin-top:20px">All dashboard, ranking, player, statistics, tournament, handicap, partner, awards and Hall of Fame pages work without Netlify Functions.</p></div></section>`;
+ $("#clearImport").onclick=()=>{$("#americanoUrl").value=""};
+ $("#copyImport").onclick=async()=>{
+  const url=$("#americanoUrl").value.trim();
+  if(!url){$("#importStatus").innerHTML='<p class="errorBox">Enter a tournament URL first.</p>';return}
+  try{await navigator.clipboard.writeText(url);$("#importStatus").innerHTML='<p class="successBox">Tournament URL copied. Use it in the FLPR workbook import workflow.</p>'}
+  catch(e){$("#importStatus").innerHTML='<p class="infoBox">Copy this URL manually:<br><code>'+escapeHtml(url)+'</code></p>'}
+ };
+}
+function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+
+function methodology(){
+ $("#app").innerHTML=`<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">About the system</div><h1 style="font-size:55px">How FLPR Works</h1><p>Fair ranking. Smarter handicaps. Better competition.</p></section><section class="wrap method"><h2>FLPR Rating</h2><p>The official rating combines adjusted win rate, dominance, performance versus expectation, schedule strength, consistency, clutch performance, versatility and recent form. Reliability weighting prevents small samples from being treated as established evidence.</p><h3>Handicap philosophy</h3><p>Positive handicap values identify stronger players; negative values provide balancing support. The primary reference format is Weekly Americano. New players receive a provisional handicap immediately and gain confidence as match volume grows.</p><h3>Status</h3><ul><li><b>Provisional:</b> early rating with limited evidence.</li><li><b>Developing:</b> sufficient match history, still stabilizing.</li><li><b>Established:</b> high-confidence rating supported by broader data.</li></ul><h3>Current dataset</h3><p>${DATA.kpis.Players} players, ${DATA.kpis["Valid Matches"]} valid matches and ${DATA.kpis["Player-Match Records"]} player-match records. Website data is exported from the FLPR Master Workbook v2.6 Phase C Complete.</p></section>`
+}
+
+function appendix(){
+ $("#app").innerHTML=`<section class="hero" style="padding-top:48px;padding-bottom:48px"><div class="eyebrow">Reference guide</div><h1 style="font-size:55px">Appendix</h1><p>Definitions, status labels, tournament formats and interpretation guidance.</p></section><section class="wrap method"><h2>Core Definitions</h2><h3>FLPR Rating</h3><p>A composite performance score reflecting adjusted win rate, point dominance, performance versus expectation, strength of schedule, consistency, clutch performance, versatility, recent form and data reliability.</p><h3>Handicap</h3><p>A balancing value used to create more competitive matches while still reflecting the player’s underlying strength. Positive values indicate stronger players; negative values provide balancing support.</p><h3>Live Rating Change</h3><p>The difference between the previous and current official rating snapshot after an approved tournament has been processed by the FLPR engine.</p><h3>Provisional Player</h3><p>A new or low-volume player whose rating and handicap are active but carry lower confidence until more verified matches are recorded.</p><h3>Win Rate and Adjusted Win Rate</h3><p>Win Rate is the share of recorded matches won. Adjusted Win Rate accounts for opponent and partner context so that raw results are interpreted more fairly.</p><h3>Consistency Index</h3><p>A measure of how stable a player’s performance is across matches and tournaments.</p><h3>Momentum and Recent Form</h3><p>Indicators of short-term performance direction. They complement, but do not replace, the longer-term official rating.</p><h3>Partner Synergy</h3><p>An evidence-based comparison of results achieved with a partner versus expected performance.</p><h3>Awards</h3><p>MVP, Most Improved, Player of the Week and other distinctions are generated from transparent statistical rules applied to verified tournament data.</p><h2>Tournament Formats</h2><ul><li><b>Americano:</b> rotating partners and opponents; individual points contribute to standings.</li><li><b>Mexicano:</b> pairings adapt by current standing to create increasingly balanced rounds.</li><li><b>King of the Court:</b> court movement is driven by match results.</li><li><b>Team League:</b> fixed teams compete across scheduled fixtures.</li></ul><h2>Import and Approval Status</h2><ul><li><b>PENDING_REVIEW:</b> imported and stored, but not yet official.</li><li><b>APPROVED:</b> validated for use by the FLPR processing pipeline.</li><li><b>REJECTED:</b> excluded due to duplication, incomplete data or validation concerns.</li></ul><p class="baselineNotice"><b>Important:</b> Americano imports are persisted automatically, but official rating, handicap and player-report changes must be produced by the approved FLPR calculation engine. The website does not invent rating changes.</p></section>`
+}
+
+boot();
+
+</script>
+</body></html>
